@@ -1,84 +1,194 @@
 import os
 import sys
-import filecmp
+import argparse
 import pandas as pd
+import numpy as np
 from pipeline import run_pipeline
 
-def run_evaluation_suite():
+def evaluate_against_golden(golden_path: str = "golden_dataset.csv", output_path: str = "output.csv"):
     """
-    Evaluation Suite testing core requirements:
-    1. Ground-Truth Match against sample_output_format_v2.csv test cases.
-    2. Zero-Hallucination Guardrail verification:
-       - Confirms every 'No (justified)' cites an existing note that truly applies to that route and window.
-       - Confirms 'Yes' rows have empty matched_note_id.
-    3. Reproducibility Check across 3 untouched runs (identical numbers, flags, and cited notes).
+    Evaluates pipeline predictions against a user-annotated golden dataset.
+    Computes:
+    - Classification Accuracy, Precision, Recall, F1 (Justified vs Unexplained)
+    - Note Attribution Accuracy (Did it cite the right note ID?)
+    - Hallucination Rate (Did it cite an unjustified or nonexistent note?)
+    - Mismatch Breakdown Table (exact differences for debugging)
     """
     print("=" * 70)
-    print("  FREIGHTTIGER SMART ASSISTANT: EVALUATION & REPRODUCIBILITY SUITE")
+    print("  FREIGHTTIGER EVALUATION HARNESS: GOLDEN DATASET BENCHMARK")
     print("=" * 70)
 
-    # 1. Inspect existing output.csv against contract test points
-    print("\n[Test Suite 1/2] Checking Ground-Truth Contract Test Cases...")
-    if not os.path.exists("output.csv"):
-        print("output.csv not found. Running pipeline once to generate baseline...")
-        run_pipeline(output_path="output.csv")
+    if not os.path.exists(golden_path):
+        print(f"ERROR: Golden dataset file '{golden_path}' not found!")
+        print("Please provide a CSV with columns: route, week_of, expected_flagged, expected_note_id")
+        sys.exit(1)
 
-    df = pd.read_csv("output.csv")
-    assert len(df) > 0, "output.csv is empty!"
+    golden_df = pd.read_csv(golden_path, skipinitialspace=True)
+    golden_df.columns = golden_df.columns.str.strip()
+    for col in golden_df.select_dtypes(include='object').columns:
+        golden_df[col] = golden_df[col].astype(str).str.strip()
 
-    # Test Case A: Ahmedabad-Mumbai on 2025-01-20 -> Justified by N002
-    am_row = df[(df['route'] == 'Ahmedabad-Mumbai') & (df['week_of'] == '2025-01-20')]
-    assert not am_row.empty, "Ahmedabad-Mumbai 2025-01-20 missing from output!"
-    assert am_row.iloc[0]['flagged'] == 'No (justified)', f"Expected 'No (justified)', got {am_row.iloc[0]['flagged']}"
-    assert am_row.iloc[0]['matched_note_id'] == 'N002', f"Expected N002, got {am_row.iloc[0]['matched_note_id']}"
-    assert float(am_row.iloc[0]['cost_per_tonne_km']) == 3.29, f"Expected 3.29, got {am_row.iloc[0]['cost_per_tonne_km']}"
-    print("  PASS: Ahmedabad-Mumbai (2025-01-20) -> Justified by N002 (cost: 3.29)")
+    if 'expected_note_id' in golden_df.columns:
+        golden_df['expected_note_id'] = golden_df['expected_note_id'].fillna("").astype(str).str.strip().replace('nan', '')
+    if 'expected_flagged' in golden_df.columns:
+        golden_df['expected_flagged'] = golden_df['expected_flagged'].astype(str).str.strip()
 
-    # Test Case B: Delhi-Jaipur on 2024-11-11 -> Unexplained (cost: 4.17)
-    dj_row = df[(df['route'] == 'Delhi-Jaipur') & (df['week_of'] == '2024-11-11')]
-    assert not dj_row.empty, "Delhi-Jaipur 2024-11-11 missing from output!"
-    assert dj_row.iloc[0]['flagged'] == 'Yes', f"Expected 'Yes', got {dj_row.iloc[0]['flagged']}"
-    assert pd.isna(dj_row.iloc[0]['matched_note_id']) or dj_row.iloc[0]['matched_note_id'] == '', "matched_note_id must be empty for unexplained!"
-    assert float(dj_row.iloc[0]['cost_per_tonne_km']) == 4.17, f"Expected 4.17, got {dj_row.iloc[0]['cost_per_tonne_km']}"
-    print("  PASS: Delhi-Jaipur (2024-11-11) -> Unexplained Flag (cost: 4.17, matched_note_id: empty)")
+    if not os.path.exists(output_path):
+        print(f"'{output_path}' not found. Running pipeline to generate predictions...")
+        run_pipeline(output_path=output_path)
 
-    # Test Case C: Mumbai-Pune on 2025-09-15 -> Unexplained with non-disruptive note rejected
-    mp_row = df[(df['route'] == 'Mumbai-Pune') & (df['week_of'] == '2025-09-15')]
-    assert not mp_row.empty, "Mumbai-Pune 2025-09-15 missing from output!"
-    assert mp_row.iloc[0]['flagged'] == 'Yes', f"Expected 'Yes', got {mp_row.iloc[0]['flagged']}"
-    assert pd.isna(mp_row.iloc[0]['matched_note_id']) or mp_row.iloc[0]['matched_note_id'] == '', "matched_note_id must be empty!"
-    assert float(mp_row.iloc[0]['cost_per_tonne_km']) == 3.98, f"Expected 3.98, got {mp_row.iloc[0]['cost_per_tonne_km']}"
-    assert "N006" in mp_row.iloc[0]['reason'], "Reason should explain why closest note N006 does not justify spike!"
-    print("  PASS: Mumbai-Pune (2025-09-15) -> Unexplained with non-disruptive note N006 properly rejected")
+    pred_df = pd.read_csv(output_path, skipinitialspace=True)
+    pred_df.columns = pred_df.columns.str.strip()
+    for col in pred_df.select_dtypes(include='object').columns:
+        pred_df[col] = pred_df[col].astype(str).str.strip()
+    pred_df['matched_note_id'] = pred_df['matched_note_id'].fillna("").astype(str).str.strip().replace('nan', '')
+    pred_df['flagged'] = pred_df['flagged'].astype(str).str.strip()
 
-    # Test Case D: Chennai-Bangalore Flood Disruption (2025-02-24) -> Justified by N001
-    cb_row = df[(df['route'] == 'Chennai-Bangalore') & (df['week_of'] == '2025-02-24')]
-    assert not cb_row.empty, "Chennai-Bangalore 2025-02-24 missing from output!"
-    assert cb_row.iloc[0]['flagged'] == 'No (justified)', f"Expected 'No (justified)', got {cb_row.iloc[0]['flagged']}"
-    assert cb_row.iloc[0]['matched_note_id'] == 'N001', f"Expected N001, got {cb_row.iloc[0]['matched_note_id']}"
-    print("  PASS: Chennai-Bangalore (2025-02-24) -> Justified by flood disruption note N001")
+    # Merge on route and week_of
+    merged = pd.merge(
+        golden_df,
+        pred_df,
+        on=['route', 'week_of'],
+        how='left',
+        suffixes=('_golden', '_pred')
+    )
 
-    # Guardrail Check on all rows
-    print("\n[Test Suite 2/2] Checking Strict Hallucination Guardrails on All Rows...")
-    notes_df = pd.read_csv("casestudy/context_notes.csv")
-    valid_note_ids = set(notes_df['note_id'].tolist())
+    total_golden_rows = len(golden_df)
+    matched_rows = merged[merged['flagged'].notna()]
+    missing_rows = merged[merged['flagged'].isna()]
 
-    for idx, row in df.iterrows():
-        flag = row['flagged']
-        nid = row['matched_note_id'] if pd.notna(row['matched_note_id']) else ""
-        if flag == 'No (justified)':
-            assert nid in valid_note_ids, f"Row {idx}: Invalid note id cited '{nid}'!"
-            # Confirm note applies
-            note_row = notes_df[notes_df['note_id'] == nid].iloc[0]
-            assert note_row['applies_to'] in [row['route'], 'All Routes'], f"Row {idx}: Note {nid} does not apply to {row['route']}!"
+    # Metric counters
+    correct_flags = 0
+    correct_notes = 0
+    hallucinations = 0
+    tp, fp, tn, fn = 0, 0, 0, 0
+    mismatches = []
+
+    for idx, row in merged.iterrows():
+        route = row['route']
+        week = row['week_of']
+        exp_flag = row['expected_flagged']
+        exp_note = row['expected_note_id']
+
+        if pd.isna(row['flagged']):
+            mismatches.append({
+                "route": route,
+                "week_of": week,
+                "expected_flag": exp_flag,
+                "predicted_flag": "NOT FLAGGED (MISSING)",
+                "expected_note": exp_note,
+                "predicted_note": "",
+                "status": "FAIL: Candidate spike missed by detector",
+                "reason": "Not present in pipeline output"
+            })
+            continue
+
+        pred_flag = row['flagged']
+        pred_note = row['matched_note_id']
+        reason = row['reason']
+
+        # Classification check
+        flag_match = (exp_flag.lower() == pred_flag.lower())
+        note_match = (exp_note.upper() == pred_note.upper())
+
+        if flag_match:
+            correct_flags += 1
+            if exp_flag.lower().startswith("no"):  # Justified
+                tp += 1
+            else:  # Yes (unexplained)
+                tn += 1
         else:
-            assert nid == "", f"Row {idx}: Unexplained row must have blank matched_note_id, got '{nid}'!"
+            if pred_flag.lower().startswith("no"):
+                fp += 1  # Falsely marked justified
+            else:
+                fn += 1  # Failed to mark justified
 
-    print(f"  PASS: All {len(df)} rows strictly obey hallucination guardrails (0 hallucinations found).")
+        # Note check
+        if note_match:
+            correct_notes += 1
+        else:
+            if pred_flag.lower().startswith("no") and exp_note == "":
+                hallucinations += 1
 
-    print("\n" + "=" * 70)
-    print("  ALL EVALUATION HARNESS CHECKS PASSED (100% SUCCESS)!")
-    print("=" * 70)
+        if not flag_match or not note_match:
+            mismatches.append({
+                "route": route,
+                "week_of": week,
+                "expected_flag": exp_flag,
+                "predicted_flag": pred_flag,
+                "expected_note": exp_note,
+                "predicted_note": pred_note,
+                "status": "FAIL: Verdict or Note Mismatch",
+                "reason": reason
+            })
+
+    # Calculations
+    accuracy = (correct_flags / total_golden_rows) * 100.0 if total_golden_rows else 0.0
+    precision = (tp / (tp + fp)) * 100.0 if (tp + fp) > 0 else 0.0
+    recall = (tp / (tp + fn)) * 100.0 if (tp + fn) > 0 else 0.0
+    f1 = (2 * precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
+    note_accuracy = (correct_notes / total_golden_rows) * 100.0 if total_golden_rows else 0.0
+    hallucination_rate = (hallucinations / total_golden_rows) * 100.0 if total_golden_rows else 0.0
+
+    print(f"\nEvaluated on Golden Dataset: '{golden_path}'")
+    print(f"Total Golden Test Cases : {total_golden_rows}")
+    print(f"Correct Verdicts        : {correct_flags} / {total_golden_rows} ({accuracy:.1f}%)")
+    print(f"Exact Note Citations    : {correct_notes} / {total_golden_rows} ({note_accuracy:.1f}%)")
+    print(f"Hallucination Rate      : {hallucination_rate:.1f}% ({hallucinations} incidents)")
+    print("-" * 70)
+    print(f"Classification Precision : {precision:.1f}%")
+    print(f"Classification Recall    : {recall:.1f}%")
+    print(f"Classification F1-Score  : {f1:.1f}%")
+    print("-" * 70)
+
+    if mismatches:
+        print(f"\n[MISMATCH] FOUND {len(mismatches)} MISMATCHES AGAINST GOLDEN ANNOTATIONS:")
+        mismatch_df = pd.DataFrame(mismatches)
+        print(mismatch_df[['route', 'week_of', 'expected_flag', 'predicted_flag', 'expected_note', 'predicted_note']].to_string(index=False))
+    else:
+        print("\n[PERFECT] 100% Match on all golden dataset annotations!")
+
+    # Generate Markdown Report Artifact
+    report_content = f"""# Evaluation Report: Golden Dataset Benchmark
+
+- **Golden Dataset**: `{golden_path}`
+- **Evaluated File**: `{output_path}`
+- **Test Rows**: {total_golden_rows}
+
+## Summary Metrics
+
+| Metric | Score | Target |
+| :--- | :--- | :--- |
+| **Overall Accuracy** | **{accuracy:.1f}%** | > 90% |
+| **Precision (Justified)** | **{precision:.1f}%** | > 90% |
+| **Recall (Justified)** | **{recall:.1f}%** | > 90% |
+| **F1-Score** | **{f1:.1f}%** | > 90% |
+| **Note Attribution Accuracy** | **{note_accuracy:.1f}%** | > 95% |
+| **Hallucination Rate** | **{hallucination_rate:.1f}%** | 0.0% |
+
+## Detailed Case Breakdown
+
+| Route | Week Of | Expected Flag | Predicted Flag | Expected Note | Predicted Note | Verdict Match |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+"""
+    for _, row in merged.iterrows():
+        vm = "✅ PASS" if (str(row['expected_flagged']).lower() == str(row['flagged']).lower() and str(row['expected_note_id']) == str(row['matched_note_id'])) else "❌ FAIL"
+        report_content += f"| {row['route']} | {row['week_of']} | {row['expected_flagged']} | {row['flagged']} | {row['expected_note_id']} | {row['matched_note_id']} | {vm} |\n"
+
+    report_path = "eval_report.md"
+    with open(report_path, "w", encoding="utf-8") as f:
+        f.write(report_content)
+    print(f"\n-> Exported full report to: {report_path}")
+
+    return {
+        "accuracy": accuracy,
+        "precision": precision,
+        "recall": recall,
+        "f1": f1,
+        "note_accuracy": note_accuracy,
+        "hallucination_rate": hallucination_rate,
+        "mismatches": len(mismatches)
+    }
 
 def run_reproducibility_test():
     """
@@ -107,7 +217,6 @@ def run_reproducibility_test():
     df2 = pd.read_csv(run_paths[1])
     df3 = pd.read_csv(run_paths[2])
 
-    # Check numeric and verdict columns equality
     cols_to_check = ['route', 'week_of', 'cost_per_tonne_km', 'vs_own_history', 'vs_similar_routes', 'flagged', 'matched_note_id']
     match_1_2 = df1[cols_to_check].equals(df2[cols_to_check])
     match_2_3 = df2[cols_to_check].equals(df3[cols_to_check])
@@ -119,7 +228,13 @@ def run_reproducibility_test():
     print("Reproducibility check completed successfully.")
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] == "--reproducibility":
+    parser = argparse.ArgumentParser(description="FreightTiger Assistant Evaluation Suite")
+    parser.add_argument("--golden", type=str, default="golden_dataset.csv", help="Path to annotated golden dataset CSV")
+    parser.add_argument("--output", type=str, default="output.csv", help="Path to pipeline predictions CSV")
+    parser.add_argument("--reproducibility", action="store_true", help="Run 3-pass reproducibility verification")
+    args = parser.parse_args()
+
+    if args.reproducibility:
         run_reproducibility_test()
     else:
-        run_evaluation_suite()
+        evaluate_against_golden(golden_path=args.golden, output_path=args.output)

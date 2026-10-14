@@ -1,0 +1,7 @@
+route            , week_of   , expected_flagged, expected_note_id, expected_cost, notes
+Ahmedabad-Mumbai , 2025-01-20, No (justified)  , N002            ,          3.29, Regional festival surcharge on Ahmedabad-Mumbai corridor
+Delhi-Jaipur     , 2024-11-11, Yes             ,                 ,          4.17, Unexplained cost surge with no matching note in dataset
+Mumbai-Pune      , 2025-09-15, Yes             ,                 ,          3.98, Unexplained spike where closest note N006 stable demand does not justify
+Chennai-Bangalore, 2025-02-24, No (justified)  , N001            ,          3.58, Heavy flooding disruption on Chennai-Bangalore corridor
+Chennai-Bangalore, 2025-03-03, No (justified)  , N001            ,          3.48, Flooding disruption ongoing through March 8
+Delhi-Jaipur     , 2024-11-18, Yes             ,                 ,          4.09, Second week of unexplained cost elevation
