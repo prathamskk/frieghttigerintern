@@ -31,6 +31,7 @@ def compute_weekly_route_aggregates(df: pd.DataFrame) -> pd.DataFrame:
         shipment_count=('shipment_id', 'count')
     ).reset_index()
     
+    # total_tonne_km = total_tonnes * distance_km (metric for freight industry)
     weekly['cost_per_tonne_km'] = weekly['total_cost'] / weekly['total_tonne_km']
     weekly = weekly.sort_values(['route', 'week_of']).reset_index(drop=True)
     return weekly
