@@ -1,0 +1,4 @@
+call_id,timestamp,model,route,week_of,candidate_notes,input_tokens,output_tokens,total_tokens,cost_usd
+1,2026-10-14 16:52:10,Qwen/Qwen2.5-1.5B-Instruct,Ahmedabad-Mumbai,2025-01-20,N002,268,61,329,3.3e-05
+2,2026-10-14 16:52:36,Qwen/Qwen2.5-1.5B-Instruct,Chennai-Bangalore,2025-02-24,N001,281,53,334,3.3e-05
+3,2026-10-14 16:53:01,Qwen/Qwen2.5-1.5B-Instruct,Chennai-Bangalore,2025-03-03,N001,281,53,334,3.3e-05
