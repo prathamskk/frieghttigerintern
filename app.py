@@ -152,9 +152,25 @@ with tab_anomalies:
 # ----------------- TAB 2: ROUTE VISUALIZER -----------------
 with tab_visualizer:
     st.subheader("Weekly Cost Tracking vs. Rolling & Peer Baselines")
-    v_routes = sorted(list(all_metrics_df['route'].unique()))
-    target_route = st.selectbox("Select Route to Drill Down", v_routes, index=0)
     
+    # Calculate global range across all routes for standardized cross-route visual comparison
+    global_cost_max = float(all_metrics_df['cost_per_tonne_km_raw'].max())
+    default_y_max = round(global_cost_max * 1.12, 1)  # e.g., 5.0
+    
+    ctrl_col1, ctrl_col2 = st.columns([2, 2])
+    with ctrl_col1:
+        v_routes = sorted(list(all_metrics_df['route'].unique()))
+        target_route = st.selectbox("Select Route to Drill Down", v_routes, index=0)
+    with ctrl_col2:
+        axis_mode = st.radio(
+            "Y-Axis (Cost / T-Km) Scale",
+            [f"Standard Global Scale (₹0 to ₹{default_y_max:.2f}) [Comparable across routes]",
+             f"Zoomed Scale (₹1.50 to ₹{default_y_max:.2f})",
+             "Dynamic Auto-Scale (Route-specific)"],
+            index=0,
+            horizontal=False
+        )
+        
     r_data = all_metrics_df[all_metrics_df['route'] == target_route].sort_values('week_of')
     
     fig = go.Figure()
@@ -194,14 +210,52 @@ with tab_visualizer:
             marker=dict(color='#EF4444', size=11, symbol='circle-open-dot', line=dict(width=3))
         ))
         
+    # Configure Y-axis range based on user selection
+    yaxis_config = dict(
+        title="Cost per Tonne-Km (₹)",
+        gridcolor="#E2E8F0"
+    )
+    if "Standard Global Scale" in axis_mode:
+        yaxis_config["range"] = [0.0, default_y_max]
+    elif "Zoomed Scale" in axis_mode:
+        yaxis_config["range"] = [1.5, default_y_max]
+        
     fig.update_layout(
         title=f"Cost Dynamics & Baselines for {target_route}",
         xaxis_title="Week (Monday Date)",
-        yaxis_title="Cost per Tonne-Km (₹)",
+        yaxis=yaxis_config,
         hovermode="x unified",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
     st.plotly_chart(fig, use_container_width=True)
+    
+    # Multi-Route Overlay Comparison
+    with st.expander("📊 Compare Multiple Corridors on the Same Fixed Scale"):
+        st.write("Select routes to overlay and compare their actual cost trajectories side-by-side on the exact same axis.")
+        multi_selected = st.multiselect(
+            "Select Corridors to Overlay",
+            v_routes,
+            default=v_routes[:3] if len(v_routes) >= 3 else v_routes
+        )
+        if multi_selected:
+            multi_fig = go.Figure()
+            for r in multi_selected:
+                m_df = all_metrics_df[all_metrics_df['route'] == r].sort_values('week_of')
+                multi_fig.add_trace(go.Scatter(
+                    x=m_df['week_of'],
+                    y=m_df['cost_per_tonne_km_raw'],
+                    mode='lines',
+                    name=r,
+                    line=dict(width=2)
+                ))
+            multi_fig.update_layout(
+                title="Cross-Corridor Cost Comparison (Shared Axis)",
+                xaxis_title="Week (Monday Date)",
+                yaxis=dict(title="Cost per Tonne-Km (₹)", range=[0.0, default_y_max]),
+                hovermode="x unified",
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            )
+            st.plotly_chart(multi_fig, use_container_width=True)
 
 # ----------------- TAB 3: CONVERSATIONAL ASSISTANT -----------------
 with tab_chat:
