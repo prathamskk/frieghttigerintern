@@ -111,6 +111,9 @@ def run_pipeline(
 
     # Step 5: Export Deliverables
     print(f"\n[Step 5/5] Exporting final deliverables...")
+    output_dir = os.path.dirname(os.path.abspath(config.output_path))
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
     output_df.to_csv(config.output_path, index=False)
     print(f"-> Generated output CSV: {config.output_path} ({len(output_df)} rows)")
 

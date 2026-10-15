@@ -58,6 +58,10 @@ class TokenCostTracker:
         }
 
     def export_csv(self, filepath: str = "token_cost_log.csv"):
+        import os
+        dirname = os.path.dirname(os.path.abspath(filepath))
+        if dirname:
+            os.makedirs(dirname, exist_ok=True)
         if not self.records:
             pd.DataFrame(columns=[
                 "call_id", "timestamp", "model", "route", "week_of",

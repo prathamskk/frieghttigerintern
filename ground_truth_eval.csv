@@ -2,7 +2,7 @@ route,week_of,expected_flagged,expected_matched_note_id,scenario_type,notes
 Chennai-Bangalore,2025-02-24,No (justified),N001,acute_disruption,Highway flooding forcing detours; must cite N001
 Chennai-Bangalore,2025-03-03,No (justified),N001,acute_disruption_ongoing,Highway flooding ongoing through March 8; must cite N001
 Ahmedabad-Mumbai,2025-01-20,No (justified),N002,local_surcharge,Regional festival temporary surcharge; must cite N002
-Chennai-Bangalore,2025-05-05,No (justified),N003,macro_fuel_hike,Nationwide diesel price hike ~5-7%; applies to all routes
+Chennai-Bangalore,2025-05-12,No (justified),N003,macro_fuel_hike,Nationwide diesel price hike ~5-7%; applies to all routes
 Mumbai-Pune,2025-09-15,Yes,,neutral_report_trap,N006 mentions stable demand with no disruptions; cannot justify
 Chennai-Bangalore,2025-03-17,Yes,,recovery_note_trap,N009 notes flood repairs completed; cannot justify remaining cost elevation
 Delhi-Jaipur,2024-11-11,Yes,,unexplained_spike,Spike over +30% with zero relevant operational notes active

@@ -1,0 +1,92 @@
+[
+  {
+    "note_id": "N001",
+    "applies_to": "Chennai-Bangalore",
+    "valid_from": "2025-02-24",
+    "valid_to": "2025-03-08",
+    "cost_direction": "INCREASE",
+    "estimated_impact_pct": 10.0,
+    "original_note": "Heavy flooding on the Chennai-Bangalore highway disrupted normal truck movement from Feb 24 to Mar 8, forcing longer detours and higher trip costs. Roads were passable again by Mar 9."
+  },
+  {
+    "note_id": "N002",
+    "applies_to": "Ahmedabad-Mumbai",
+    "valid_from": "2025-01-20",
+    "valid_to": "2025-02-19",
+    "cost_direction": "INCREASE",
+    "estimated_impact_pct": null,
+    "original_note": "A regional festival week saw a temporary surcharge applied by transporters on the Ahmedabad-Mumbai corridor due to high demand and limited truck availability."
+  },
+  {
+    "note_id": "N003",
+    "applies_to": "All Routes",
+    "valid_from": "2025-05-05",
+    "valid_to": "2025-05-25",
+    "cost_direction": "INCREASE",
+    "estimated_impact_pct": 5.0,
+    "original_note": "Diesel prices rose nationwide starting this week, pushing up transportation costs across all routes by roughly 5-7%."
+  },
+  {
+    "note_id": "N004",
+    "applies_to": "All Routes",
+    "valid_from": "2024-03-11",
+    "valid_to": "2024-04-11",
+    "cost_direction": "NEUTRAL",
+    "estimated_impact_pct": null,
+    "original_note": "A new toll plaza was commissioned on a national highway stretch, but the affected routes are not part of this dataset."
+  },
+  {
+    "note_id": "N005",
+    "applies_to": "Mumbai-Delhi",
+    "valid_from": "2024-07-29",
+    "valid_to": "2024-08-29",
+    "cost_direction": "NEUTRAL",
+    "estimated_impact_pct": null,
+    "original_note": "Scheduled highway maintenance work between Mumbai and Delhi caused minor delays for about a week; costs were not significantly affected."
+  },
+  {
+    "note_id": "N006",
+    "applies_to": "All Routes",
+    "valid_from": "2025-09-22",
+    "valid_to": "2025-10-22",
+    "cost_direction": "NEUTRAL",
+    "estimated_impact_pct": null,
+    "original_note": "A logistics industry report noted overall demand for freight capacity remained stable this quarter with no major disruptions reported."
+  },
+  {
+    "note_id": "N007",
+    "applies_to": "Delhi-Jaipur",
+    "valid_from": "2024-05-20",
+    "valid_to": "2024-06-20",
+    "cost_direction": "INCREASE",
+    "estimated_impact_pct": null,
+    "original_note": "Local authorities announced improved road conditions on the Delhi-Jaipur stretch after resurfacing work was completed."
+  },
+  {
+    "note_id": "N008",
+    "applies_to": "Kolkata-Bhubaneswar",
+    "valid_from": "2025-06-09",
+    "valid_to": "2025-06-29",
+    "cost_direction": "NEUTRAL",
+    "estimated_impact_pct": null,
+    "original_note": "No significant disruptions were reported on the Kolkata-Bhubaneswar corridor this quarter; freight movement remained normal."
+  },
+  {
+    "note_id": "N009",
+    "applies_to": "Chennai-Bangalore",
+    "valid_from": "2025-03-17",
+    "valid_to": "2025-04-17",
+    "cost_direction": "NEUTRAL",
+    "estimated_impact_pct": null,
+    "original_note": "Highway authorities confirmed the Chennai-Bangalore route returned to normal conditions after flood-related repairs were completed."
+  },
+  {
+    "note_id": "N010",
+    "applies_to": "All Routes",
+    "valid_from": "2025-10-27",
+    "valid_to": "2025-11-27",
+    "cost_direction": "NEUTRAL",
+    "estimated_impact_pct": null,
+    "original_note": "A new vehicle tracking mandate was introduced for commercial fleets; compliance costs were absorbed by transporters without a rate change."
+  }
+]

@@ -1,0 +1,16 @@
+# Core Data Analytics & Baseline Computations
+pandas>=2.0.0
+numpy>=1.26.0
+
+# PyTorch & HuggingFace Offline Transformers Inference
+torch>=2.1.0
+transformers>=4.40.0
+accelerate>=0.28.0
+
+# Interactive Web Application (Stretch Goal)
+streamlit>=1.30.0
+plotly>=5.18.0
+
+# Testing & Observability
+pytest>=8.0.0
+tqdm>=4.66.0

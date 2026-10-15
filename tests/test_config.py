@@ -1,11 +1,11 @@
 import pytest
 from dataclasses import FrozenInstanceError
-from src.config import FreightConfig, DEFAULT_CONFIG
+from src.config import FreightConfig, DEFAULT_CONFIG, SPIKE_THRESHOLD_PCT, TRAILING_WINDOW_WEEKS
 
 
 def test_freight_config_defaults():
     config = FreightConfig()
-    assert config.spike_threshold_pct == 20.0
+    assert config.spike_threshold_pct == 13.0
     assert config.trailing_window_weeks == 8
     assert config.shipments_path == "casestudy/shipment_records.csv"
     assert config.notes_path == "casestudy/context_notes.csv"

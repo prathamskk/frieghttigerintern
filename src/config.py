@@ -9,7 +9,7 @@ class FreightConfig:
     at a single validated seam.
     """
     # 1. Core Analytics & Baseline Rules
-    spike_threshold_pct: float = 20.0
+    spike_threshold_pct: float = 13.0
     trailing_window_weeks: int = 8
 
     # 2. Canonical File Paths

@@ -1,0 +1,32 @@
+======================================================================
+FREIGHTTIGER REPRODUCIBILITY AUDIT: OUTPUT CSV DIFF CHECK
+======================================================================
+
+Pipeline runs executed: 3
+Execution command: python pipeline.py --re-extract --output <path> --cache <path>
+Inference Mode: Local Qwen2.5-1.5B-Instruct (Greedy Decoding, Seed=42)
+
+----------------------------------------------------------------------
+DIFF CHECK 1: output1.csv vs output2.csv
+----------------------------------------------------------------------
+Differences: NONE (0 lines differ)
+Status: IDENTICAL (Match 100%)
+
+----------------------------------------------------------------------
+DIFF CHECK 2: output2.csv vs output3.csv
+----------------------------------------------------------------------
+Differences: NONE (0 lines differ)
+Status: IDENTICAL (Match 100%)
+
+----------------------------------------------------------------------
+DIFF CHECK 3: output1.csv vs output3.csv
+----------------------------------------------------------------------
+Differences: NONE (0 lines differ)
+Status: IDENTICAL (Match 100%)
+
+======================================================================
+SUMMARY:
+Total Differences Found across all 3 runs: 0
+Status: PASSED
+Nothing changed between checks. Deterministic reproducibility is 100% verified.
+======================================================================
