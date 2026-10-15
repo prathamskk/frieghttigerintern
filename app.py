@@ -5,6 +5,10 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 from src.analytics import load_and_preprocess_shipments, compute_weekly_route_aggregates, compute_baselines_and_flags
+from src.assistant import ConversationalAssistant
+from src.inference import LocalQwenEngine
+from src.tracker import TokenCostTracker
+from src.config import FreightConfig, DEFAULT_CONFIG
 
 st.set_page_config(
     page_title="FreightTiger Shipping Cost Assistant",
@@ -56,19 +60,19 @@ st.markdown("""
 # Cache data loading
 @st.cache_data
 def load_data():
-    shipments_df = load_and_preprocess_shipments("casestudy/shipment_records.csv")
+    shipments_df = load_and_preprocess_shipments(DEFAULT_CONFIG.shipments_path)
     weekly_df = compute_weekly_route_aggregates(shipments_df)
-    all_metrics_df, _ = compute_baselines_and_flags(weekly_df)
+    all_metrics_df, _ = compute_baselines_and_flags(weekly_df, config=DEFAULT_CONFIG)
     
-    if os.path.exists("output.csv"):
-        output_df = pd.read_csv("output.csv")
+    if os.path.exists(DEFAULT_CONFIG.output_path):
+        output_df = pd.read_csv(DEFAULT_CONFIG.output_path)
     else:
         output_df = pd.DataFrame()
         
-    notes_df = pd.read_csv("casestudy/context_notes.csv")
+    notes_df = pd.read_csv(DEFAULT_CONFIG.notes_path)
     
-    if os.path.exists("token_cost_log.csv"):
-        token_df = pd.read_csv("token_cost_log.csv")
+    if os.path.exists(DEFAULT_CONFIG.token_log_path):
+        token_df = pd.read_csv(DEFAULT_CONFIG.token_log_path)
     else:
         token_df = pd.DataFrame()
         
@@ -131,11 +135,11 @@ with tab_anomalies:
             "route": st.column_config.TextColumn("Route", width="medium"),
             "week_of": st.column_config.TextColumn("Week Of", width="small"),
             "cost_per_tonne_km": st.column_config.NumberColumn("Cost / T-Km (₹)", format="%.2f"),
-            "vs_own_history": st.column_config.TextColumn("vs Past Average"),
-            "vs_similar_routes": st.column_config.TextColumn("vs Similar Routes"),
+            "vs_own_history": st.column_config.TextColumn("vs. Own History"),
+            "vs_similar_routes": st.column_config.TextColumn("vs. Similar Routes"),
             "flagged": st.column_config.TextColumn("Flagged Status"),
-            "matched_note_id": st.column_config.TextColumn("Cited Note ID"),
-            "reason": st.column_config.TextColumn("Plain-English Explanation", width="large")
+            "matched_note_id": st.column_config.TextColumn("Matched Note ID"),
+            "reason": st.column_config.TextColumn("Reason", width="large")
         },
         use_container_width=True,
         hide_index=True
@@ -257,77 +261,91 @@ with tab_visualizer:
             )
             st.plotly_chart(multi_fig, use_container_width=True)
 
-# ----------------- TAB 3: CONVERSATIONAL ASSISTANT -----------------
+@st.cache_resource
+def get_inference_engine():
+    tracker = TokenCostTracker(model_name=DEFAULT_CONFIG.model_name)
+    return LocalQwenEngine(config=DEFAULT_CONFIG, tracker=tracker)
+
+def get_conversational_assistant():
+    engine = get_inference_engine()
+    return ConversationalAssistant(
+        engine=engine,
+        output_df=output_df,
+        all_metrics_df=all_metrics_df,
+        tracker=engine.tracker,
+        config=DEFAULT_CONFIG
+    )
+
+
+
+# ----------------- TAB 3: SMART ASSISTANT -----------------
 with tab_chat:
-    st.subheader("Ask the Smart Assistant (Stretch Goal)")
-    st.write("Ask natural-language questions regarding route cost changes, anomalous weeks, or why specific routes spiked.")
-    
-    example_prompts = [
-        "Why did Chennai-Bangalore spike in late February 2025?",
-        "Why did Ahmedabad-Mumbai get pricier in January 2025?",
-        "Why was Delhi-Jaipur flagged for review in November 2024?",
-        "What was the impact of diesel price changes across routes?"
-    ]
-    
-    q_col1, q_col2 = st.columns([3, 1])
-    with q_col1:
-        user_query = st.text_input("Ask a question about shipping costs:", placeholder="e.g. Why did this route get pricier in March?")
-    with q_col2:
-        st.write("Or pick a common question:")
-        selected_example = st.selectbox("Example questions", ["-- Select --"] + example_prompts)
-        if selected_example != "-- Select --":
-            user_query = selected_example
+    st.subheader("Smart Shipping Cost Assistant")
+    st.write("Ask questions in plain English about route cost changes, check whether cost rises were justified by operational context notes, or audit historical baselines.")
 
-    if user_query:
-        query_lower = user_query.lower()
-        response_text = ""
-        
-        # Grounded answering logic backed strictly by output.csv and context_notes.csv
-        if "chennai" in query_lower and ("feb" in query_lower or "march" in query_lower or "mar" in query_lower or "flood" in query_lower):
-            cb_rows = output_df[output_df['route'] == 'Chennai-Bangalore']
-            response_text = (
-                "**Chennai-Bangalore Cost Spikes Analysis:**\n\n"
-                "- **Week of 2025-02-24 & 2025-03-03:** Cost jumped to ₹3.58 and ₹3.48 per tonne-km (+31.5% and +22.8% above past average). "
-                "These spikes are **Justified** by Note **N001**: Heavy flooding disrupted normal truck movement from Feb 24 to Mar 8, forcing longer detours and higher trip costs.\n"
-                "- **Week of 2025-03-10 onwards:** Road repairs were completed and highways reopened by Mar 9 (confirmed by Note **N009** on Mar 17). Continued elevated costs after Mar 9 are flagged for human review."
-            )
-        elif "ahmedabad" in query_lower or "festival" in query_lower:
-            am_row = output_df[(output_df['route'] == 'Ahmedabad-Mumbai') & (output_df['week_of'] == '2025-01-20')].iloc[0]
-            response_text = (
-                f"**Ahmedabad-Mumbai Spike in January 2025:**\n\n"
-                f"- **Week of 2025-01-20:** Cost rose to ₹3.29 per tonne-km ({am_row['vs_own_history']}, {am_row['vs_similar_routes']}).\n"
-                f"- **Verdict:** **No (justified)**\n"
-                f"- **Explanation:** Grounded by Note **N002**: A regional festival week drove a temporary surcharge applied by transporters on the corridor due to high demand and limited truck capacity."
-            )
-        elif "delhi-jaipur" in query_lower or ("delhi" in query_lower and "jaipur" in query_lower):
-            dj_rows = output_df[output_df['route'] == 'Delhi-Jaipur']
-            response_text = (
-                "**Delhi-Jaipur Spikes in November 2024:**\n\n"
-                "- **Weeks 2024-11-11 and 2024-11-18:** Cost surged to ₹4.17 (+35.5% vs past) and ₹4.09 (+27.6% vs past).\n"
-                "- **Verdict:** **Yes (Flagged for Review)**\n"
-                "- **Explanation:** No matching external disruption note was found for Delhi-Jaipur in November 2024. The cost rise is completely unexplained and flagged for human investigation."
-            )
-        elif "diesel" in query_lower or "fuel" in query_lower:
-            response_text = (
-                "**Diesel Price Impact Analysis:**\n\n"
-                "- Note **N003** (2025-05-05) recorded a nationwide diesel price increase that raised overall transportation costs by roughly 5-7% across all corridors.\n"
-                "- Because this impacted all routes equally and stayed within a 5-7% band, individual route costs did not trigger the 20% anomaly threshold in isolation, maintaining baseline stability."
-            )
-        else:
-            # Fallback search across output reasons
-            matches = output_df[output_df['route'].str.lower().apply(lambda r: any(k in query_lower for k in r.split('-')))]
-            if not matches.empty:
-                response_text = f"**Findings for matching route(s):**\n\n"
-                for _, m in matches.iterrows():
-                    response_text += f"- **{m['route']} ({m['week_of']}):** ₹{m['cost_per_tonne_km']} ({m['vs_own_history']}). Verdict: **{m['flagged']}**. Reason: {m['reason']}\n"
-            else:
-                response_text = (
-                    "I searched the audited shipment dataset and context notes. "
-                    "To get detailed insights, try asking about specific corridors like 'Chennai-Bangalore in March', "
-                    "'Ahmedabad-Mumbai festival', or 'Delhi-Jaipur in November'."
+    assistant = get_conversational_assistant()
+
+    if "chat_messages" not in st.session_state:
+        st.session_state.chat_messages = [
+            {
+                "role": "assistant",
+                "content": (
+                    "👋 **Hello! I am your FreightTiger Smart Shipping Cost Assistant.**\n\n"
+                    "Ask me about any shipping route cost rise (e.g. *'Why was Ahmedabad-Mumbai high on 2025-01-20?'*), "
+                    "check normal baseline weeks, or investigate unexplained rises."
                 )
+            }
+        ]
 
-        st.info(response_text)
+    # Render conversation history
+    for msg in st.session_state.chat_messages:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+            if "caption" in msg and msg["caption"]:
+                st.caption(msg["caption"])
+
+    # Example query quick chips
+    st.markdown("**Suggested Inquiries:**")
+    c1, c2, c3, c4 = st.columns(4)
+    selected_query = None
+    with c1:
+        if st.button("Ahmedabad-Mumbai (Jan 2025)", use_container_width=True):
+            selected_query = "Why was Ahmedabad-Mumbai high on 2025-01-20?"
+    with c2:
+        if st.button("Chennai-Bangalore (Feb 2025)", use_container_width=True):
+            selected_query = "Why did Chennai-Bangalore spike on 2025-02-24?"
+    with c3:
+        if st.button("Delhi-Jaipur (Nov 2024)", use_container_width=True):
+            selected_query = "Why was Delhi-Jaipur flagged on 2024-11-11?"
+    with c4:
+        if st.button("Mumbai-Delhi baseline (Jul 2024)", use_container_width=True):
+            selected_query = "Why did Mumbai-Delhi cost 2.06 on 2024-07-29?"
+
+    chat_input_val = st.chat_input("Ask a question about shipping costs (e.g., Why was Ahmedabad-Mumbai high in Jan 2025?)...")
+    active_query = chat_input_val or selected_query
+
+    if active_query:
+        st.session_state.chat_messages.append({"role": "user", "content": active_query})
+        with st.chat_message("user"):
+            st.markdown(active_query)
+
+        with st.spinner("Analyzing verified anomaly records and baselines..."):
+            res = assistant.answer(active_query)
+
+        ans_text = res["answer"]
+        caption = f"⏱️ Latency: {res['latency_seconds']:.2f}s | Status: `{res['status']}`"
+        if res.get("parsed_params") and res["parsed_params"].get("resolved_week_of"):
+            caption += f" | Evaluated Week: `{res['parsed_params']['resolved_week_of']}`"
+
+        st.session_state.chat_messages.append({
+            "role": "assistant",
+            "content": ans_text,
+            "caption": caption
+        })
+
+        with st.chat_message("assistant"):
+            st.markdown(ans_text)
+            st.caption(caption)
 
 # ----------------- TAB 4: OBSERVABILITY -----------------
 with tab_observability:

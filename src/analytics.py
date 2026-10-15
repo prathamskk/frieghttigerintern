@@ -1,15 +1,22 @@
 import pandas as pd
 import numpy as np
-from typing import Tuple
+from typing import Tuple, Union, Any
+from src.config import FreightConfig, DEFAULT_CONFIG
 
-def load_and_preprocess_shipments(filepath: str) -> pd.DataFrame:
+def load_and_preprocess_shipments(source: Union[str, pd.DataFrame, Any]) -> pd.DataFrame:
     """
     Loads shipment records and computes basic fields:
     - route: origin-destination
     - week_of: Monday date of the calendar week (Monday to Sunday)
     - tonne_km: quantity_tonnes * distance_km
+
+    Accepts a filepath string, a Path-like object, an IO buffer, or an existing DataFrame.
     """
-    df = pd.read_csv(filepath)
+    if isinstance(source, pd.DataFrame):
+        df = source.copy()
+    else:
+        df = pd.read_csv(source)
+
     df['shipment_date'] = pd.to_datetime(df['shipment_date'])
     
     # Monday of the week
@@ -38,22 +45,25 @@ def compute_weekly_route_aggregates(df: pd.DataFrame) -> pd.DataFrame:
 
 def compute_baselines_and_flags(
     weekly_df: pd.DataFrame,
-    spike_threshold_pct: float = 20.0
+    config: FreightConfig = DEFAULT_CONFIG
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     Computes precisely defined comparison baselines:
-    1. vs. own history: trailing 8-week unweighted rolling average of cost per tonne-km
-       strictly before current week. If < 8 weeks exist, uses all available prior weeks.
+    1. vs. own history: trailing unweighted rolling average of cost per tonne-km
+       strictly before current week (window defined by config.trailing_window_weeks).
+       If fewer weeks exist, uses all available prior weeks.
     2. vs. similar routes: average cost per tonne-km in that same week across all other
        routes sharing the same route_type (excluding current route).
 
     Flags candidate spikes where:
-       diff_hist_pct > 0 AND (diff_hist_pct >= spike_threshold_pct OR diff_peer_pct >= spike_threshold_pct)
+       diff_hist_pct > 0 AND (diff_hist_pct >= config.spike_threshold_pct OR diff_peer_pct >= config.spike_threshold_pct)
 
     Returns:
     - all_weekly_df: complete table with all calculated baselines and metrics.
     - spike_candidates_df: filtered candidate spikes requiring note verification.
     """
+    spike_threshold_pct = config.spike_threshold_pct
+    window_weeks = config.trailing_window_weeks
     records = []
     
     for (route, rtype), group in weekly_df.groupby(['route', 'route_type']):
@@ -63,8 +73,8 @@ def compute_baselines_and_flags(
             cur_cost = row['cost_per_tonne_km']
             cur_week = row['week_of']
             
-            # 1. Trailing 8-week history strictly before current week
-            prior_weeks = group.iloc[max(0, idx - 8):idx]
+            # 1. Trailing history strictly before current week
+            prior_weeks = group.iloc[max(0, idx - window_weeks):idx]
             if len(prior_weeks) > 0:
                 hist_avg = prior_weeks['cost_per_tonne_km'].mean()
                 diff_hist_pct = ((cur_cost - hist_avg) / hist_avg) * 100.0

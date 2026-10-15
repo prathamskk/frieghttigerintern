@@ -204,3 +204,20 @@ When presenting in Round 2, follow this 4-step structure:
    - Show the 3-run reproducibility diff test passing byte-for-byte.
    - Present the token/cost log (<1,000 tokens total for the full dataset, costing under $0.0001).
    - Demo the Streamlit interactive Q&A assistant answering ad-hoc corridor questions.
+
+
+### Scope of the Assistant & What It Can/Can't Do Yet
+
+* **What it does today:** You can ask about sudden price jumps on a specific route for a specific week (e.g., *"Why did Chennai-Bangalore spike in late February?"*). The assistant looks up that exact week, checks if costs were unusually high, and tells you whether an actual event (like highway flooding) caused it or if it is an unjustified increase.
+
+
+* **What it cannot do yet:** It cannot answer broad, big-picture questions across long periods of time (e.g., *"Why did shipping costs across India go up between January and December?"*).
+
+
+* **Why this limit exists:** The system compares every week's price against a moving 8-week average to spot sudden spikes. When something permanent happens—like a nationwide diesel price hike in May—it stops being a "surprise spike" after about 8 weeks and just becomes the new normal rate.
+
+
+* **Preventing false blame:** To stop the AI from lazily blaming an old May diesel hike for unrelated price jumps happening 6 months later in December, the assistant only looks for notes within a short time window around the jump.
+
+
+* **Next steps for production:** Answering long-term, multi-month contract and trend questions will be added in a future update by giving the chatbot a dedicated historical search tool. For now, it stays strictly focused on auditing and explaining weekly price spikes.

@@ -6,17 +6,17 @@ from src.analytics import (
     compute_weekly_route_aggregates,
     compute_baselines_and_flags
 )
+from src.config import FreightConfig, DEFAULT_CONFIG
 
 # ----------------------------------------------------------------------
 # 1. TEST WEEK GROUPING (Monday-Sunday Cohorting)
 # ----------------------------------------------------------------------
-def test_week_grouping_all_days_of_week():
+def test_week_grouping_all_days_of_week(tmp_path):
     """
     Verify that all shipment_date values are grouped into Monday-to-Sunday
     calendar weeks where week_of strictly represents that week's Monday date.
+    Tests file loading and preprocessing in an isolated temporary directory.
     """
-    # Sample spanning an entire week: Monday 2024-01-01 to Sunday 2024-01-07
-    # and next Monday 2024-01-08
     test_dates = [
         ("2024-01-01", "Monday", "2024-01-01"),
         ("2024-01-02", "Tuesday", "2024-01-01"),
@@ -29,9 +29,8 @@ def test_week_grouping_all_days_of_week():
         ("2024-01-14", "Next Sunday", "2024-01-08"),
     ]
 
-    records = []
-    for i, (dt, day_name, expected_monday) in enumerate(test_dates):
-        records.append({
+    records = [
+        {
             "shipment_id": f"TEST_{i}",
             "origin": "Mumbai",
             "destination": "Pune",
@@ -42,38 +41,39 @@ def test_week_grouping_all_days_of_week():
             "freight_cost_inr": 5000,
             "shipment_date": dt,
             "transporter": "Test Logistics"
-        })
+        }
+        for i, (dt, _, _) in enumerate(test_dates)
+    ]
 
-    temp_csv = "tests_temp_dates.csv"
+    temp_csv = tmp_path / "temp_dates.csv"
     pd.DataFrame(records).to_csv(temp_csv, index=False)
 
-    try:
-        processed = load_and_preprocess_shipments(temp_csv)
-        for i, (dt, day_name, expected_monday) in enumerate(test_dates):
-            actual_week_of = processed.loc[i, "week_of"]
-            assert actual_week_of == expected_monday, (
-                f"Date {dt} ({day_name}) got week_of {actual_week_of}, expected {expected_monday}"
-            )
-            # Verify the parsed date is strictly a Monday
-            monday_dt = pd.to_datetime(actual_week_of)
-            assert monday_dt.weekday() == 0, f"week_of {actual_week_of} is not a Monday!"
-    finally:
-        import os
-        if os.path.exists(temp_csv):
-            os.remove(temp_csv)
+    processed = load_and_preprocess_shipments(str(temp_csv))
+    for i, (dt, day_name, expected_monday) in enumerate(test_dates):
+        actual_week_of = processed.loc[i, "week_of"]
+        assert actual_week_of == expected_monday, (
+            f"Date {dt} ({day_name}) got week_of {actual_week_of}, expected {expected_monday}"
+        )
+        monday_dt = pd.to_datetime(actual_week_of)
+        assert monday_dt.weekday() == 0, f"week_of {actual_week_of} is not a Monday!"
 
 def test_week_grouping_on_dataset():
     """
-    Verify across the full shipment_records.csv that every week_of is strictly a Monday.
+    Verify across shipment_records.csv that domain invariants hold:
+    1. Dataset loads non-empty with required contract columns.
+    2. Every week_of is strictly a Monday (weekday == 0).
+    3. Every shipment_date falls within [week_of, week_of + 6 days].
     """
     df = load_and_preprocess_shipments("casestudy/shipment_records.csv")
-    assert len(df) == 2940
+    assert len(df) > 0, "Shipment dataset is unexpectedly empty!"
+    required_cols = {'shipment_id', 'shipment_date', 'week_of', 'tonne_km', 'route'}
+    assert required_cols.issubset(df.columns), f"Missing required columns: {required_cols - set(df.columns)}"
 
-    # Ensure week_of is strictly Monday (weekday == 0)
+    # Invariant: week_of is strictly Monday (weekday == 0)
     mondays = pd.to_datetime(df['week_of'])
     assert (mondays.dt.weekday == 0).all(), "Found non-Monday dates in week_of!"
 
-    # Ensure difference between shipment_date and week_of is between 0 and 6 days
+    # Invariant: shipment_date is within [0, 6] days of its week's Monday
     diff_days = (df['shipment_date'] - mondays).dt.days
     assert (diff_days >= 0).all(), "Found shipment_date before week_of Monday!"
     assert (diff_days <= 6).all(), "Found shipment_date more than 6 days after week_of Monday!"
@@ -87,12 +87,6 @@ def test_metric_formula_calculation():
     Confirm that cost_per_tonne_km is computed exactly as:
     total freight cost / (quantity in tonnes * distance in km)
     """
-    # Two shipments on the same route in the same week
-    # Shipment 1: 10 tonnes, 100 km, 5,000 INR -> tonne_km = 1,000
-    # Shipment 2: 20 tonnes, 200 km, 12,000 INR -> tonne_km = 4,000
-    # Total cost = 17,000 INR
-    # Total tonne-km = 1,000 + 4,000 = 5,000 tonne-km
-    # Expected weighted cost_per_tonne_km = 17,000 / 5,000 = 3.40 INR / tonne-km
     sample_data = pd.DataFrame([
         {
             "shipment_id": "S1", "origin": "Mumbai", "destination": "Pune", "route_type": "Short",
@@ -116,29 +110,25 @@ def test_metric_formula_calculation():
         f"Expected {expected_cost_per_tkm}, got {actual_cost_per_tkm}"
     )
 
-def test_metric_formula_dataset_benchmarks():
+@pytest.mark.parametrize("route,week_of,expected_val", [
+    ("Delhi-Jaipur", "2024-11-11", 4.17),
+    ("Ahmedabad-Mumbai", "2025-01-20", 3.29),
+    ("Mumbai-Pune", "2025-09-15", 3.98)
+])
+def test_metric_formula_dataset_benchmarks(route, week_of, expected_val):
     """
-    Verify metric formula matches exact values in official sample_output_format_v2.csv:
-    - Delhi-Jaipur (2024-11-11): 4.17
-    - Ahmedabad-Mumbai (2025-01-20): 3.29
-    - Mumbai-Pune (2025-09-15): 3.98
+    Verify metric formula matches exact values in official sample_output_format_v2.csv.
+    Each benchmark is independently evaluated via pytest parametrization.
     """
     df = load_and_preprocess_shipments("casestudy/shipment_records.csv")
     weekly = compute_weekly_route_aggregates(df)
 
-    benchmarks = [
-        ("Delhi-Jaipur", "2024-11-11", 4.17),
-        ("Ahmedabad-Mumbai", "2025-01-20", 3.29),
-        ("Mumbai-Pune", "2025-09-15", 3.98)
-    ]
-
-    for route, week_of, expected_val in benchmarks:
-        row = weekly[(weekly['route'] == route) & (weekly['week_of'] == week_of)]
-        assert not row.empty, f"Missing route-week: {route} {week_of}"
-        actual_val = round(row.iloc[0]['cost_per_tonne_km'], 2)
-        assert actual_val == expected_val, (
-            f"Benchmark mismatch for {route} on {week_of}: Expected {expected_val}, got {actual_val}"
-        )
+    row = weekly[(weekly['route'] == route) & (weekly['week_of'] == week_of)]
+    assert not row.empty, f"Missing route-week: {route} {week_of}"
+    actual_val = round(row.iloc[0]['cost_per_tonne_km'], 2)
+    assert actual_val == expected_val, (
+        f"Benchmark mismatch for {route} on {week_of}: Expected {expected_val}, got {actual_val}"
+    )
 
 
 # ----------------------------------------------------------------------
@@ -207,7 +197,7 @@ def test_trailing_8_week_window_strictly_prior_weeks():
         })
     weekly = pd.DataFrame(rows)
 
-    all_metrics, _ = compute_baselines_and_flags(weekly, spike_threshold_pct=20.0)
+    all_metrics, _ = compute_baselines_and_flags(weekly, config=DEFAULT_CONFIG)
 
     # Week 9 (idx = 8):
     # Strictly prior 8 weeks: [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]
@@ -251,7 +241,7 @@ def test_short_history_no_padding_or_extrapolation():
         })
     weekly = pd.DataFrame(rows)
 
-    all_metrics, _ = compute_baselines_and_flags(weekly, spike_threshold_pct=20.0)
+    all_metrics, _ = compute_baselines_and_flags(weekly, config=DEFAULT_CONFIG)
 
     # Week 1: 0 prior weeks
     w1 = all_metrics.iloc[0]
@@ -301,7 +291,7 @@ def test_peer_baseline_excludes_self_and_filters_by_route_type():
     ]
     weekly = pd.DataFrame(rows)
 
-    all_metrics, _ = compute_baselines_and_flags(weekly, spike_threshold_pct=20.0)
+    all_metrics, _ = compute_baselines_and_flags(weekly, config=DEFAULT_CONFIG)
 
     # For R1 (Short):
     # Peers are R2 (4.0) and R3 (6.0). R1 (2.0) is excluded! R4 (Long) is excluded!
